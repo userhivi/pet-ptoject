@@ -1,0 +1,28 @@
+@startuml
+title Каталог и общение 
+
+left to right direction
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #444444
+}
+
+actor "Клиент" as Client
+actor "Агент" as Agent
+
+rectangle "Каталог и общение" {
+  usecase "Просмотреть каталог\nдоставленных авто" as UC28
+  usecase "Отфильтровать каталог" as UC29
+  usecase "Вести каталог\n(опубликовать, снять)" as UC30
+  usecase "Общаться в чате заказа" as UC31
+}
+
+Client --> UC28
+Client --> UC31
+Agent --> UC30
+Agent --> UC31
+
+UC29 ..> UC28 : <<extend>>
+
+@enduml

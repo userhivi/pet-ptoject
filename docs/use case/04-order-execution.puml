@@ -1,0 +1,52 @@
+@startuml
+title Выкуп, логистика, таможня и отслеживание
+
+left to right direction
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #444444
+}
+
+actor "Агент" as Agent
+actor "Клиент" as Client
+actor "Сервис уведомлений" as Notifier
+
+rectangle "Исполнение заказа" {
+  usecase "Обновить статус заказа" as UC17
+  usecase "Зафиксировать выкуп\nи доп. опции" as UC18
+  usecase "Обновить статус логистики" as UC19
+  usecase "Обновить статус таможни" as UC20
+  usecase "Зафиксировать передачу\nавтомобиля" as UC21
+  usecase "Отправить уведомление клиенту" as UC07
+
+  usecase "Отследить статус заказа" as UC22
+  usecase "Просмотреть историю статусов" as UC23
+  usecase "Настроить каналы уведомлений" as UC24
+}
+
+Agent --> UC17
+Client --> UC22
+Client --> UC24
+UC07 -- Notifier
+
+UC17 <|-- UC18
+UC17 <|-- UC19
+UC17 <|-- UC20
+UC17 <|-- UC21
+
+UC17 ..> UC07 : <<include>>
+UC23 ..> UC22 : <<extend>>
+
+note right of UC19
+  Данные от перевозчика и брокера
+  агент получает вне системы
+  и вносит сам.
+end note
+
+note bottom of UC17
+  Обобщённый сценарий.
+  Его уточняют UC-18…UC-21.
+end note
+
+@enduml

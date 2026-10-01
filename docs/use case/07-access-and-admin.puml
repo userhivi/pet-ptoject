@@ -1,0 +1,36 @@
+@startuml
+title Доступ и администрирование
+
+left to right direction
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #444444
+}
+
+actor "Пользователь" as User
+actor "Клиент" as Client
+actor "Агент" as Agent
+actor "Администратор" as Admin
+
+User <|-- Client
+User <|-- Agent
+User <|-- Admin
+
+rectangle "Доступ и администрирование" {
+  usecase "Войти в систему" as UC32
+  usecase "Управлять пользователями" as UC33
+  usecase "Управлять справочниками" as UC34
+}
+
+User --> UC32
+Admin --> UC33
+Admin --> UC34
+
+note right of UC32
+  Вход — предусловие всех остальных
+  сценариев, поэтому на других
+  диаграммах не показан.
+end note
+
+@enduml

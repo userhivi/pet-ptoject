@@ -1,0 +1,43 @@
+@startuml
+title Осмотр, решение и возврат
+
+left to right direction
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #444444
+}
+
+actor "Клиент" as Client
+actor "Агент" as Agent
+actor "Сервис уведомлений" as Notifier
+
+rectangle "Осмотр и возврат" {
+  usecase "Опубликовать отчёт об осмотре" as UC08
+  usecase "Просмотреть отчёт об осмотре" as UC09
+  usecase "Принять решение по отчёту" as UC10
+  usecase "Отказаться от заказа\nи запросить возврат" as UC11
+  usecase "Обработать запрос на возврат" as UC12
+  usecase "Зафиксировать платёж\n(см. диаграмму 03)" as UC13
+  usecase "Загрузить файлы\n(см. диаграмму 01)" as UC06
+  usecase "Отправить уведомление клиенту" as UC07
+}
+
+Agent --> UC08
+Agent --> UC12
+Client --> UC10
+UC07 -- Notifier
+
+UC08 ..> UC06 : <<include>>
+UC08 ..> UC07 : <<include>>
+UC10 ..> UC09 : <<include>>
+UC12 ..> UC13 : <<include>>
+UC11 ..> UC10 : <<extend>>
+
+note right of UC11
+  Расширяет решение по отчёту,
+  если клиент выбрал отказ.
+  Доступно до бронирования.
+end note
+
+@enduml

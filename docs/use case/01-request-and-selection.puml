@@ -1,0 +1,41 @@
+@startuml
+title Заявка и подбор автомобиля
+
+left to right direction
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #444444
+}
+
+actor "Клиент" as Client
+actor "Агент" as Agent
+actor "Сервис уведомлений" as Notifier
+
+rectangle "Заявка и подбор" {
+  usecase "Создать заявку на подбор" as UC01
+  usecase "Опубликовать вариант" as UC02
+  usecase "Просмотреть вариант" as UC03
+  usecase "Принять решение по варианту" as UC04
+  usecase "Указать причину отклонения" as UC05
+  usecase "Загрузить файлы\n(проверка формата и размера)" as UC06
+  usecase "Отправить уведомление клиенту" as UC07
+}
+
+Client --> UC01
+Client --> UC04
+Agent --> UC02
+UC07 -- Notifier
+
+UC02 ..> UC06 : <<include>>
+UC02 ..> UC07 : <<include>>
+UC04 ..> UC03 : <<include>>
+UC05 ..> UC04 : <<extend>>
+
+note right of UC05
+  Расширяет решение,
+  если клиент выбрал
+  «Не подходит»
+end note
+
+@enduml

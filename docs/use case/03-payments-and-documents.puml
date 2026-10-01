@@ -1,0 +1,31 @@
+@startuml
+title Платежи и документы
+
+left to right direction
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #444444
+}
+
+actor "Клиент" as Client
+actor "Агент" as Agent
+
+rectangle "Платежи и документы" {
+  usecase "Зафиксировать платёж" as UC13
+  usecase "Просмотреть платежи" as UC14
+  usecase "Загрузить документ" as UC15
+  usecase "Просмотреть документы заказа" as UC16
+  usecase "Загрузить файлы\n(см. диаграмму 01)" as UC06
+}
+
+Agent --> UC13
+Agent --> UC15
+Agent --> UC16
+Client --> UC14
+Client --> UC15
+Client --> UC16
+
+UC15 ..> UC06 : <<include>>
+
+@enduml

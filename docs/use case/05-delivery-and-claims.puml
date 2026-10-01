@@ -1,0 +1,40 @@
+@startuml
+title Получение автомобиля и претензии
+
+left to right direction
+skinparam shadowing false
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #444444
+}
+
+actor "Клиент" as Client
+actor "Агент" as Agent
+actor "Сервис уведомлений" as Notifier
+
+rectangle "Получение и претензии" {
+  usecase "Зафиксировать передачу\nавтомобиля" as UC21
+  usecase "Подтвердить получение\nи подписать акт" as UC25
+  usecase "Подать претензию" as UC26
+  usecase "Рассмотреть претензию" as UC27
+  usecase "Загрузить файлы\n(см. диаграмму 01)" as UC06
+  usecase "Отправить уведомление клиенту" as UC07
+}
+
+Agent --> UC21
+Agent --> UC27
+Client --> UC25
+UC07 -- Notifier
+
+UC21 ..> UC07 : <<include>>
+UC27 ..> UC07 : <<include>>
+UC26 ..> UC06 : <<include>>
+UC26 ..> UC25 : <<extend>>
+
+note right of UC26
+  Расширяет подтверждение получения,
+  если клиент обнаружил недостатки.
+  Доступно 14 дней после передачи.
+end note
+
+@enduml
