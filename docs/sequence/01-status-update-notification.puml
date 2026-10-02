@@ -1,0 +1,61 @@
+@startuml
+title Агент обновляет статус заказа, клиент получает уведомление
+
+autonumber
+skinparam shadowing false
+
+actor "Агент" as Agent
+participant "Веб-интерфейс" as UI
+participant "API" as API
+database "БД" as DB
+queue "Очередь\nсобытий" as MQ
+participant "Сервис\nуведомлений" as NS
+participant "Провайдеры\n(e-mail, SMS, Telegram)" as Prov
+actor "Клиент" as Client
+
+== Синхронная часть: обновление статуса ==
+Agent -> UI : Выбирает новый статус\n(например, «на границе»)
+UI -> API : PATCH /orders/{id}/status\n{status, comment}
+activate API
+API -> API : Проверить токен и роль «Агент»
+API -> DB : Прочитать текущий статус заказа
+DB --> API : Текущий статус
+
+alt Переход допустим и обязательные поля заполнены
+  API -> DB : Сохранить новый статус\nи запись в историю статусов
+  DB --> API : OK
+  API ->> MQ : Событие OrderStatusChanged\n{orderId, newStatus}
+  API --> UI : 200 OK
+  UI --> Agent : Статус обновлён
+else Переход недопустим или нет причины
+  API --> UI : 422 Ошибка валидации
+  UI --> Agent : Показать ошибку
+end
+deactivate API
+
+== Асинхронная часть: рассылка уведомлений ==
+MQ ->> NS : OrderStatusChanged
+activate NS
+NS -> DB : Получить клиента и включённые каналы
+DB --> NS : Каналы клиента
+
+par E-mail
+  NS -> Prov : Отправить e-mail
+else SMS
+  NS -> Prov : Отправить SMS
+else Telegram
+  NS -> Prov : Отправить сообщение в Telegram
+end
+
+Prov --> NS : Результат доставки по каждому каналу
+NS -> DB : Записать результат в журнал
+deactivate NS
+
+note right of NS
+  Ошибка доставки по одному каналу
+  не блокирует остальные (FR-15)
+end note
+
+Prov ->> Client : Уведомление: номер заказа,\nновый статус, ссылка на заказ
+
+@enduml

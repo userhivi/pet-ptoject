@@ -1,0 +1,89 @@
+@startuml
+title Агент публикует отчёт об осмотре, клиент принимает решение
+
+autonumber
+skinparam shadowing false
+
+actor "Агент" as Agent
+participant "Веб-интерфейс" as UI
+participant "API" as API
+collections "Хранилище\nфайлов" as FS
+database "БД" as DB
+queue "Очередь\nсобытий" as MQ
+actor "Клиент" as Client
+
+== Агент загружает файлы отчёта ==
+loop Для каждого фото или видео
+  Agent -> UI : Выбирает файл и категорию
+  UI -> API : POST /orders/{id}/inspection-report/files
+  activate API
+  API -> API : Проверить формат, размер и разрешение
+  alt Файл допустим
+    API -> FS : Сохранить файл
+    FS --> API : Адрес файла
+    API -> DB : Сохранить метаданные файла
+    API --> UI : 201 Created
+  else Файл не подходит
+    API --> UI : 400 Недопустимый файл
+    UI --> Agent : Показать причину
+  end
+  deactivate API
+end
+
+== Агент публикует отчёт ==
+Agent -> UI : Указывает заключение и комментарий,\nнажимает «Опубликовать»
+UI -> API : POST /orders/{id}/inspection-report/publish\n{conclusion, comment}
+activate API
+API -> DB : Проверить количество фото\nи обязательные категории
+DB --> API : Состав отчёта
+
+alt Отчёт полный и заключение указано
+  API -> DB : Сохранить отчёт как опубликованный
+  API ->> MQ : Событие ReportPublished\n{orderId}
+  API --> UI : 200 OK
+else Не хватает фото, категории или комментария
+  API --> UI : 422 Отчёт не полный
+end
+deactivate API
+
+MQ ->> Client : Уведомление об отчёте\n
+
+== Клиент просматривает отчёт ==
+Client -> UI : Открывает отчёт
+UI -> API : GET /orders/{id}/inspection-report
+activate API
+API -> DB : Проверить, что заказ принадлежит клиенту
+
+alt Заказ принадлежит клиенту
+  API -> DB : Прочитать отчёт
+  API -> FS : Получить ссылки на файлы
+  API --> UI : 200 Отчёт с фото и видео
+  UI --> Client : Показать отчёт
+else Чужой заказ
+  API --> UI : 403 Доступ запрещён
+end
+deactivate API
+
+== Клиент принимает решение ==
+Client -> UI : Выбирает действие
+UI -> API : POST /orders/{id}/inspection-report/decision\n{decision}
+activate API
+
+alt Подтвердить покупку
+  note over UI, API
+    Если заключение «не соответствует объявлению»,
+    интерфейс запрашивает дополнительное подтверждение
+  end note
+  API -> DB : Статус заказа «Ожидает оплаты»,\nзапись в историю
+else Вернуться к подбору
+  API -> DB : Статус заказа «Подбор»,\nзапись в историю
+else Отказаться от заказа
+  API -> DB : Создать запрос на возврат,\nзапись в историю
+end
+
+DB --> API : OK
+API --> UI : 200 OK
+deactivate API
+UI --> Client : Показать новый статус
+
+@enduml

@@ -1,0 +1,65 @@
+@startuml
+title Клиент подаёт претензию, агент принимает решение
+
+autonumber
+skinparam shadowing false
+
+actor "Клиент" as Client
+participant "Веб-интерфейс" as UI
+participant "API" as API
+collections "Хранилище\nфайлов" as FS
+database "БД" as DB
+queue "Очередь\nсобытий" as MQ
+actor "Агент" as Agent
+
+== Клиент подаёт претензию ==
+Client -> UI : Нажимает «Подать претензию»,\nописывает недостатки, прикладывает фото
+UI -> API : POST /orders/{id}/claims\n{description, photos}
+activate API
+API -> API : Проверить токен и роль «Клиент»
+API -> DB : Проверить владельца заказа, статус\nи дату передачи автомобиля
+DB --> API : Данные заказа
+
+alt Заказ клиента, статус «Передан клиенту», прошло не более 14 дней
+  API -> API : Проверить формат и количество фото
+  API -> FS : Сохранить фото
+  FS --> API : Адреса файлов
+  API -> DB : Создать претензию «подана»,\nстатус заказа «Претензия», запись в историю
+  DB --> API : OK
+  API ->> MQ : Событие ClaimSubmitted\n{orderId, claimId}
+  API --> UI : 201 Created
+  UI --> Client : Претензия принята
+else Срок подачи истёк или статус не подходит
+  API --> UI : 409 Подача претензии недоступна
+  UI --> Client : Показать причину
+end
+deactivate API
+
+MQ ->> Agent : Уведомление о претензии
+
+== Агент рассматривает претензию ==
+Agent -> UI : Открывает претензию, выбирает решение
+UI -> API : POST /claims/{id}/decision\n{decision, reason}
+activate API
+
+alt Претензия признана
+  API -> DB : Статус претензии «признана», запись в историю
+  note right of API
+    Урегулирование (ремонт, компенсация)
+    фиксируется отдельным шагом
+  end note
+else Претензия отклонена
+  alt Обоснование указано
+    API -> DB : Статус претензии «отклонена»,\nзаказ «Завершён», запись в историю
+  else Обоснование не указано
+    API --> UI : 422 Обоснование обязательно
+  end
+end
+
+API ->> MQ : Событие ClaimStatusChanged\n{claimId, status}
+API --> UI : 200 OK
+deactivate API
+
+MQ ->> Client : Уведомление о решении по претензии\n(рассылка — см. SD-01)
+
+@enduml
