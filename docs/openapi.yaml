@@ -1,0 +1,536 @@
+openapi: 3.0.3
+
+info:
+  title: Car Import Tracker API
+  version: 1.0
+  description: |
+    API системы отслеживания пригона автомобилей из Китая.
+    Формат данных: JSON. Даты: ISO 8601, например 2026-10-12T09:30:00Z.
+    Токен передаётся в заголовке Authorization: Bearer (токен).
+    Уведомления клиенту рассылаются асинхронно и отдельного запроса не имеют.
+
+servers:
+  - url: https://api.example.com/api/v1
+
+tags:
+  - name: Auth
+    description: Вход в систему
+  - name: Orders
+    description: Заказы, варианты автомобилей, статусы
+  - name: Claims
+    description: Претензии после получения автомобиля
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Войти в систему
+      description: Возвращает токен доступа. Роль любая.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Вход выполнен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Неверный e-mail или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /orders:
+    post:
+      tags: [Orders]
+      summary: Создать заявку на подбор
+      description: Клиент создаёт заявку с параметрами автомобиля. Роль клиент.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+            example:
+              brand: BMW
+              model: 120i
+              budgetRub: 2500000
+              year: 2023
+      responses:
+        '201':
+          description: Заявка создана, статус new_request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      summary: Получить заказ
+      description: Клиент видит только свои заказы, агент любые.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Заказ найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example:
+                orderId: 1042
+                status: inspection
+                brand: BMW
+                model: 120i
+                budgetRub: 2500000
+                createdAt: "2026-10-01T08:00:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{orderId}/variants:
+    post:
+      tags: [Orders]
+      summary: Опубликовать вариант автомобиля
+      description: Агент предлагает клиенту вариант. Фото загружаются отдельным запросом. Роль агент.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariantCreateRequest'
+            example:
+              brand: BMW
+              model: 120i
+              priceRub: 2300000
+              productionYear: 2023
+              mileageKm: 15000
+              description: Белый седан, один владелец
+      responses:
+        '201':
+          description: Вариант опубликован, клиент получит уведомление
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /orders/{orderId}/variants/{variantId}/decision:
+    post:
+      tags: [Orders]
+      summary: Принять или отклонить вариант
+      description: Клиент отвечает на предложенный вариант. Роль клиент-владелец заказа.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/VariantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariantDecisionRequest'
+            example:
+              decision: rejected
+              reason: Слишком большой пробег
+      responses:
+        '200':
+          description: Решение сохранено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: По этому варианту решение уже принято
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: ALREADY_DECIDED
+                message: Решение по варианту уже принято
+
+  /orders/{orderId}/status:
+    patch:
+      tags: [Orders]
+      summary: Обновить статус заказа
+      description: Агент переводит заказ на новый этап, клиент получает уведомление. Роль агент.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusChangeRequest'
+            example:
+              status: to_border
+              comment: Автовоз выехал, прибытие на границу 20 октября
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Такой переход недопустим
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_TRANSITION
+                message: Из статуса inspection нельзя перейти в to_city
+
+  /orders/{orderId}/claims:
+    post:
+      tags: [Claims]
+      summary: Подать претензию
+      description: Доступно в течение 14 дней после передачи автомобиля. Фото загружаются отдельным запросом. Роль клиент-владелец заказа.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimCreateRequest'
+            example:
+              description: Не работает подогрев сидений, который устанавливали в Китае
+      responses:
+        '201':
+          description: Претензия принята, агент получит уведомление
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Срок подачи истёк или статус заказа не подходит
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: CLAIM_WINDOW_CLOSED
+                message: Срок подачи претензии, 14 дней с даты передачи, истёк
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /claims/{claimId}/decision:
+    post:
+      tags: [Claims]
+      summary: Принять решение по претензии
+      description: Агент признаёт или отклоняет претензию. При отказе нужно обоснование. Роль агент.
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimDecisionRequest'
+            example:
+              decision: rejected
+              reason: Опция была установлена по согласованию, неисправность возникла после передачи
+      responses:
+        '200':
+          description: Решение сохранено, клиент получит уведомление
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 1042
+    VariantId:
+      name: variantId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 7
+    ClaimId:
+      name: claimId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 33
+
+  responses:
+    Unauthorized:
+      description: Не передан токен или он недействителен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: UNAUTHORIZED
+            message: Требуется вход в систему
+    Forbidden:
+      description: Нет прав на это действие или заказ принадлежит другому клиенту
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: FORBIDDEN
+            message: Доступ запрещён
+    NotFound:
+      description: Объект с таким номером не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: NOT_FOUND
+            message: Объект не найден
+    ValidationError:
+      description: Ошибка в заполнении полей
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: VALIDATION_ERROR
+            message: Проверьте заполнение полей
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    Role:
+      type: string
+      enum: [client, agent, admin]
+
+    OrderStatus:
+      type: string
+      enum:
+        - new_request
+        - selection
+        - variant_approval
+        - inspection
+        - awaiting_payment
+        - purchase
+        - to_border
+        - customs
+        - to_city
+        - handed_over
+        - completed
+        - cancelled
+        - claim
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      required: [accessToken, role]
+      properties:
+        accessToken:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+
+    OrderCreateRequest:
+      type: object
+      required: [brand, model, budgetRub]
+      properties:
+        brand:
+          type: string
+        model:
+          type: string
+        budgetRub:
+          type: number
+          minimum: 1
+        year:
+          type: integer
+
+    Order:
+      type: object
+      required: [orderId, status]
+      properties:
+        orderId:
+          type: integer
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        brand:
+          type: string
+        model:
+          type: string
+        budgetRub:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+
+    VariantCreateRequest:
+      type: object
+      required: [brand, model, priceRub]
+      properties:
+        brand:
+          type: string
+        model:
+          type: string
+        priceRub:
+          type: number
+          minimum: 1
+        productionYear:
+          type: integer
+        mileageKm:
+          type: integer
+          minimum: 0
+        description:
+          type: string
+
+    Variant:
+      type: object
+      required: [variantId, clientDecision]
+      properties:
+        variantId:
+          type: integer
+        brand:
+          type: string
+        model:
+          type: string
+        priceRub:
+          type: number
+        clientDecision:
+          type: string
+          enum: [pending, accepted, rejected]
+
+    VariantDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [accepted, rejected]
+        reason:
+          type: string
+
+    StatusChangeRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        comment:
+          type: string
+
+    ClaimCreateRequest:
+      type: object
+      required: [description]
+      properties:
+        description:
+          type: string
+          minLength: 10
+
+    Claim:
+      type: object
+      required: [claimId, status]
+      properties:
+        claimId:
+          type: integer
+        status:
+          type: string
+          enum: [submitted, accepted, rejected, settled]
+        description:
+          type: string
+        decisionReason:
+          type: string
+
+    ClaimDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [accepted, rejected]
+        reason:
+          type: string
